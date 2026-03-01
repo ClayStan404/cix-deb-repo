@@ -91,7 +91,8 @@ jobs:
 
           # 转换为 JSON 数组
           if [ -n "$projects" ]; then
-            projects_json=$(echo "$projects" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            # 将空格分隔的项目列表转换为 JSON 数组
+            projects_json=$(echo "$projects" | tr ' ' '\n' | jq -R -s -c 'split("\n") | map(select(length > 0))')
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             # 空数组
