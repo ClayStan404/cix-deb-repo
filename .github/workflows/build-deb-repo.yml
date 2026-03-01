@@ -200,7 +200,6 @@ jobs:
           generate_index() {
             local dir="$1"
             local title="$2"
-            # 使用相对路径作为标题
             local rel_dir="${dir#repo/}"
             [ -z "$rel_dir" ] && rel_dir="."
             mkdir -p "$dir"
@@ -217,11 +216,9 @@ jobs:
               echo "<h1>Index of /$rel_dir</h1>"
               echo "<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>"
               echo "<tr><td><a href=\"../\">../</a></td><td>-</td><td>-</td></tr>"
-              # 列出目录内容，按名称排序
               for item in "$dir"/*; do
                 [ -e "$item" ] || continue
                 name=$(basename "$item")
-                # 跳过 index.html 文件
                 [ "$name" = "index.html" ] && continue
                 if [ -d "$item" ]; then
                   size="-"
@@ -236,12 +233,24 @@ jobs:
               echo "</table></body></html>"
             } > "$dir/index.html"
           }
-          # 递归为所有目录生成索引
-          echo "Generating index files for all directories..."
+          echo "=== Finding all directories ==="
+          find repo -type d | sort
+          echo ""
+          echo "=== Generating index files ==="
           find repo -type d | while read dir; do
+            echo "Generating: $dir/index.html"
             generate_index "$dir" "Index: $dir"
           done
-          echo "Generated $(find repo -name "index.html" | wc -l) index files"
+          echo ""
+          echo "=== Verification ==="
+          echo "Generated index.html files:"
+          find repo -name "index.html" | sort
+          echo ""
+          echo "Total: $(find repo -name "index.html" | wc -l) index files"
+          echo ""
+          echo "=== Checking specific directories ==="
+          ls -la repo/dists/index.html 2>/dev/null || echo "  dists/index.html NOT FOUND"
+          ls -la repo/dists/trixie/index.html 2>/dev/null || echo "  dists/trixie/index.html NOT FOUND"
 
       - name: Create index.html
         run: |
