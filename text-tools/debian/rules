@@ -1,3 +1,9 @@
 #!/usr/bin/make -f
 %:
 	dh $@
+
+override_dh_auto_install:
+	# 手动安装脚本
+	install -d debian/text-tools/usr/bin
+	install -m 755 word-count.sh debian/text-tools/usr/bin/word-count
+	install -m 755 line-count.sh debian/text-tools/usr/bin/line-count

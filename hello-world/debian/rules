@@ -1,3 +1,8 @@
 #!/usr/bin/make -f
 %:
 	dh $@
+
+override_dh_auto_install:
+	# 手动安装脚本
+	install -d debian/hello-world/usr/bin
+	install -m 755 hello-world.sh debian/hello-world/usr/bin/hello-world
