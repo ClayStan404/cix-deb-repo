@@ -112,7 +112,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y reprepro gnupg
 
-      - name: Configure reprepro (unsigned mode)
+      - name: Configure reprepro
         run: |
           mkdir -p repo/conf
           cat > repo/conf/distributions << 'EOF'
@@ -123,6 +123,7 @@ jobs:
           Architectures: arm64
           Components: main
           Description: APT repository for Cix packages
+          SignWith: yes
           EOF
           cat repo/conf/distributions
 
@@ -158,8 +159,7 @@ jobs:
           echo "=== Dists contents ==="
           ls -laR repo/dists/ 2>/dev/null || echo "dists dir not found"
 
-      - name: Sign repository (optional)
-        if: vars.ENABLE_GPG == 'true'
+      - name: Sign repository
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -217,7 +217,7 @@ jobs:
           cat > repo/README.md <<'EOF'
           # Cix APT Repository
 
-          ## Setup (with signature verification)
+          ## Setup
 
           ### Import GPG key:
           ```bash
@@ -296,7 +296,7 @@ jobs:
           <body>
             <h1>Cix APT Repository</h1>
             <p>Debian Trixie ARM64 package repository hosted on GitHub Pages.</p>
-            <p><span class="verified">✓ Signed Repository</span> - Packages are cryptographically signed.</p>
+            <p><span class="verified">✓ Signed Repository</span> - All packages are cryptographically signed.</p>
             <h2>Quick Setup</h2>
             <pre>wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
