@@ -63,7 +63,7 @@ jobs:
           fi
 
           # 安装构建依赖
-          mk-build-deps --install --tool='apt-get --no-install-recommends -y' --remove-deps || true
+          mk-build-deps --install --tool='apt-get --no-install-recommends -y' || true
 
           # 构建源码包和二进制包
           dpkg-buildpackage -b -uc -us || dpkg-buildpackage -uc -us

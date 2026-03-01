@@ -38,7 +38,7 @@ for project in $PROJECTS; do
 
     # 安装构建依赖
     echo "安装构建依赖..."
-    sudo mk-build-deps --install --tool='apt-get --no-install-recommends -y' --remove-deps 2>/dev/null || true
+    sudo mk-build-deps --install --tool='apt-get --no-install-recommends -y' 2>/dev/null || true
 
     # 构建包
     echo "构建 deb 包..."
