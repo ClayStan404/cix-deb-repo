@@ -36,6 +36,20 @@ for deb in "$@"; do
     fi
 
     echo "→ 添加: $deb"
+
+    # 验证 deb 文件格式
+    if ! dpkg-deb --info "$deb" >/dev/null 2>&1; then
+        echo "❌ 错误: 无效的 deb 文件: $deb"
+        exit 1
+    fi
+
+    # 检查架构
+    arch=$(dpkg-deb --showformat='${Architecture}' --show "$deb")
+    echo "  架构: $arch"
+    if [ "$arch" != "arm64" ] && [ "$arch" != "all" ]; then
+        echo "⚠️  警告: 意外的架构 '$arch'，预期 'arm64' 或 'all'"
+    fi
+
     if reprepro -b "$LOCAL_REPO_DIR" includedeb "$REPO_CODENAME" "$deb"; then
         ((added_count++))
     else

@@ -32,7 +32,7 @@ Origin: $REPO_NAME
 Label: $REPO_DESCRIPTION
 Suite: $REPO_SUITE
 Codename: $REPO_CODENAME
-Architectures: $REPO_ARCHITECTURES source
+Architectures: $REPO_ARCHITECTURES
 Components: $REPO_COMPONENTS
 Description: $REPO_DESCRIPTION
 SignWith: yes

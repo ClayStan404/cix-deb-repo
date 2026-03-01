@@ -14,6 +14,15 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# 仓库配置（集中管理）
+env:
+  REPO_NAME: "Cix Repository"
+  REPO_CODENAME: "trixie"
+  REPO_SUITE: "stable"
+  REPO_ARCH: "arm64"
+  REPO_COMPONENTS: "main"
+  REPO_URL: "https://claystan404.github.io/cix-deb-repo"
+
 jobs:
   discover:
     runs-on: ubuntu-latest
@@ -153,12 +162,12 @@ jobs:
         run: |
           mkdir -p repo/conf
           cat > repo/conf/distributions <<EOF
-          Origin: Cix Repository
-          Label: Debian Trixie arm64 CIX Packages Repo
-          Suite: stable
-          Codename: trixie
-          Architectures: arm64
-          Components: main
+          Origin: ${{ env.REPO_NAME }}
+          Label: Debian ${{ env.REPO_CODENAME }} ${{ env.REPO_ARCH }} CIX Packages Repo
+          Suite: ${{ env.REPO_SUITE }}
+          Codename: ${{ env.REPO_CODENAME }}
+          Architectures: ${{ env.REPO_ARCH }}
+          Components: ${{ env.REPO_COMPONENTS }}
           Description: APT repository for Cix packages
           SignWith: $GPG_KEY_ID
           EOF
@@ -208,15 +217,15 @@ jobs:
 
           ### Import GPG key:
           ```bash
-          wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+          wget -qO- ${{ env.REPO_URL }}/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
           ```
 
           ### Add repository:
           ```bash
-          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] ${{ env.REPO_URL }} ${{ env.REPO_CODENAME }} ${{ env.REPO_COMPONENTS }}" | sudo tee /etc/apt/sources.list.d/cix.list
 
           # 或直接使用：
-          echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+          echo "deb [trusted=yes] ${{ env.REPO_URL }} ${{ env.REPO_CODENAME }} ${{ env.REPO_COMPONENTS }}" | sudo tee /etc/apt/sources.list.d/cix.list
           ```
 
           ### Install packages:
@@ -281,14 +290,14 @@ jobs:
           </head>
           <body>
             <h1>Cix APT Repository</h1>
-            <p>Debian Trixie ARM64 package repository hosted on GitHub Pages.</p>
+            <p>Debian ${{ env.REPO_CODENAME }} ${{ env.REPO_ARCH }} package repository hosted on GitHub Pages.</p>
             <p><span class="verified">✓ Signed Repository</span> - All packages are cryptographically signed.</p>
             <h2>Quick Setup</h2>
-            <pre>wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
-            echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+            <pre>wget -qO- ${{ env.REPO_URL }}/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] ${{ env.REPO_URL }} ${{ env.REPO_CODENAME }} ${{ env.REPO_COMPONENTS }}" | sudo tee /etc/apt/sources.list.d/cix.list
             sudo apt update
             sudo apt install package-name</pre>
-            <p><strong>Architecture:</strong> ARM64 only</p>
+            <p><strong>Architecture:</strong> ${{ env.REPO_ARCH }} only</p>
             <h2>Available Packages</h2>
             <ul>
               <li><a href="dists/">dists/</a> - Package indices</li>

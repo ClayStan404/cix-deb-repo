@@ -13,9 +13,9 @@ echo "=== Cix Debian 仓库 - 本地构建脚本 ==="
 repo-config::info
 echo ""
 
-# 查找所有包含 debian/ 目录的项目
+# 查找所有包含 debian/ 目录的项目（使用共享函数）
 echo "正在查找项目..."
-PROJECTS=$(find "$REPO_ROOT" -mindepth 2 -maxdepth 4 -type d -name "debian" | sed "s|$REPO_ROOT/||" | sed 's|/debian||')
+PROJECTS=$(repo-config::find_projects "$REPO_ROOT")
 
 if [ -z "$PROJECTS" ]; then
     echo "❌ 未找到任何包含 debian/ 目录的项目"

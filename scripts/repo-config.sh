@@ -21,6 +21,12 @@ export LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/..
 # 构建输出目录
 export BUILD_DIR="${BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/build}"
 
+# 项目发现函数 - 查找所有包含 debian/ 目录的项目
+repo-config::find_projects() {
+    local repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+    find "$repo_root" -mindepth 2 -maxdepth 4 -type d -name "debian" | sed "s|$repo_root/||" | sed 's|/debian||'
+}
+
 # 导出配置摘要（用于调试）
 repo-config::info() {
     cat <<INFO
