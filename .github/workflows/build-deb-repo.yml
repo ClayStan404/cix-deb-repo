@@ -147,7 +147,7 @@ jobs:
           echo "Building for arm64..."
           dpkg-buildpackage -a arm64 -b -uc -us || {
             echo "Build failed, trying binary-arch only..."
-            debian/rules binary-arch
+            DEB_BUILD_OPTIONS=crossbuildcanrunhostbinaries fakeroot debian/rules binary-arch
           }
 
           cd ..
