@@ -37,7 +37,6 @@ jobs:
       fail-fast: false
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
-        arch: [amd64, arm64]
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
@@ -47,16 +46,9 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential devscripts debhelper dpkg-dev qemu-user-static
+          sudo apt-get install -y build-essential devscripts debhelper dpkg-dev crossbuild-essential-arm64 gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-user-static
 
-      - name: Setup cross-compilation for arm64
-        if: matrix.arch == 'arm64'
-        run: |
-          sudo apt-get install -y crossbuild-essential-arm64 gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
-          echo "HOST_ARCH=arm64" >> $GITHUB_ENV
-
-      - name: Build package ${{ matrix.project }} for ${{ matrix.arch }}
+      - name: Build package ${{ matrix.project }}
         run: |
           cd "${{ matrix.project }}"
           if [ ! -f debian/control ]; then
@@ -64,39 +56,31 @@ jobs:
             exit 0
           fi
 
-          # 设置架构
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            export DEB_BUILD_OPTIONS=arch=arm64
-            export DEB_HOST_ARCH=arm64
-            export DEB_HOST_GNU_TYPE=aarch64-linux-gnu
-            export DEB_BUILD_GNU_TYPE=x86_64-linux-gnu
-            # 检查包是否支持 arm64
-            if grep -q "Architecture: any" debian/control || grep -q "Architecture: arm64" debian/control || grep -q "Architecture: linux-any" debian/control; then
-              echo "Building for arm64 via cross-compilation"
-            else
-              echo "Package doesn't support arm64, skipping"
-              exit 0
-            fi
-          else
-            export DEB_HOST_ARCH=amd64
-          fi
+          # 检查包架构
+          PACKAGE_ARCH=$(grep "^Package:" debian/control | head -1 | awk '{print $2}')
+          ARCH_LINE=$(grep -E "^Architecture:" debian/control | head -1)
+          echo "Package: $PACKAGE_ARCH, Arch line: $ARCH_LINE"
+
+          # 设置 arm64 交叉编译环境
+          export DEB_BUILD_OPTIONS=arch=arm64
+          export DEB_HOST_ARCH=arm64
+          export DEB_HOST_GNU_TYPE=aarch64-linux-gnu
+          export DEB_BUILD_GNU_TYPE=x86_64-linux-gnu
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
 
           # 安装构建依赖
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            sudo mk-build-deps --install --arch=arm64 --tool='apt-get --no-install-recommends -y' || \
-            sudo apt-get build-dep -a arm64 -y . || true
-          else
-            sudo mk-build-deps --install --tool='apt-get --no-install-recommends -y' || true
-          fi
+          sudo mk-build-deps --install --arch=arm64 --tool='apt-get --no-install-recommends -y' || \
+          sudo apt-get build-dep -a arm64 -y . || \
+          sudo mk-build-deps --install --tool='apt-get --no-install-recommends -y' || true
 
-          # 构建
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            dpkg-buildpackage -a arm64 -b -uc -us --host-arch aarch64-linux-gnu 2>/dev/null || \
-            dpkg-buildpackage -a arm64 -b -uc -us 2>/dev/null || \
-            echo "Cross-compile failed, package may not support arm64"
-          else
-            dpkg-buildpackage -b -uc -us || dpkg-buildpackage -uc -us
-          fi
+          # 构建 arm64 包
+          echo "Building for arm64..."
+          dpkg-buildpackage -a arm64 -b -uc -us --host-arch aarch64-linux-gnu || \
+          dpkg-buildpackage -a arm64 -b -uc -us || {
+            echo "Build failed, trying binary-arch only..."
+            debian/rules binary-arch
+          }
 
           cd ..
           mkdir -p artifacts
@@ -105,7 +89,7 @@ jobs:
       - name: Upload debs
         uses: actions/upload-artifact@v4
         with:
-          name: debs-${{ matrix.project }}-${{ matrix.arch }}
+          name: debs-${{ matrix.project }}
           path: artifacts/*.deb
           if-no-files-found: ignore
 
@@ -133,10 +117,10 @@ jobs:
           mkdir -p repo/conf
           cat > repo/conf/distributions << 'EOF'
           Origin: Cix Repository
-          Label: Debian Trixie CIX Packages Repo
+          Label: Debian Trixie arm64 CIX Packages Repo
           Suite: stable
           Codename: trixie
-          Architectures: arm64 amd64
+          Architectures: arm64
           Components: main
           Description: APT repository for Cix packages
           EOF
@@ -169,10 +153,10 @@ jobs:
           find repo -type f | head -20
           echo ""
           echo "=== Pool contents ==="
-          ls -la repo/pool/ 2>/dev/null || echo "pool dir not found"
+          ls -laR repo/pool/ 2>/dev/null || echo "pool dir not found"
           echo ""
           echo "=== Dists contents ==="
-          ls -la repo/dists/ 2>/dev/null || echo "dists dir not found"
+          ls -laR repo/dists/ 2>/dev/null || echo "dists dir not found"
 
       - name: Sign repository (optional)
         if: vars.ENABLE_GPG == 'true'
@@ -253,7 +237,6 @@ jobs:
           generate_index "dists" "Distributions"
           generate_index "dists/trixie" "Distribution: trixie"
           generate_index "dists/trixie/main" "Component: main"
-          generate_index "dists/trixie/main/binary-amd64" "Binary AMD64"
           generate_index "dists/trixie/main/binary-arm64" "Binary ARM64"
           echo "Generated index files:"
           find repo -name "index.html" | head -20
@@ -277,12 +260,13 @@ jobs:
           </head>
           <body>
             <h1>Cix APT Repository</h1>
-            <p>Debian Trixie package repository hosted on GitHub Pages.</p>
+            <p>Debian Trixie ARM64 package repository hosted on GitHub Pages.</p>
             <h2>Quick Setup</h2>
             <pre>echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           sudo apt update</pre>
             <h2>Install Packages</h2>
             <pre>sudo apt install package-name</pre>
+            <p><strong>Architecture:</strong> ARM64 only</p>
             <h2>Available Packages</h2>
             <ul>
               <li><a href="dists/">dists/</a> - Package indices</li>
