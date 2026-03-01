@@ -189,9 +189,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: repo
-          key: reprepro-repo-${{ github.ref_name }}
+          key: reprepro-repo-${{ github.ref_name }}-${{ github.run_number }}
           restore-keys: |
-            reprepro-repo-
+            reprepro-repo-${{ github.ref_name }}-
 
       - name: Download previous repo-backup (cache miss fallback)
         if: steps.restore-repo.outputs.cache-miss == 'true'
@@ -416,7 +416,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: repo
-          key: reprepro-repo-${{ github.ref_name }}
+          key: reprepro-repo-${{ github.ref_name }}-${{ github.run_number }}
 
       - name: Upload repo-backup artifact (additional backup)
         uses: actions/upload-artifact@v4
