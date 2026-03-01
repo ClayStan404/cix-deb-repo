@@ -221,9 +221,10 @@ jobs:
               for item in "$dir"/*; do
                 [ -e "$item" ] || continue
                 name=$(basename "$item")
+                # 跳过 index.html 文件
+                [ "$name" = "index.html" ] && continue
                 if [ -d "$item" ]; then
                   size="-"
-                  mod=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 | cut -d'T' -f1 | cut -d' ' -f1 || echo "-")
                   mod_time=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
                   echo "<tr><td><a href=\"$name/\">$name/</a></td><td>$mod_time</td><td>$size</td></tr>"
                 elif [ -f "$item" ]; then
@@ -238,16 +239,9 @@ jobs:
           # 递归为所有目录生成索引
           echo "Generating index files for all directories..."
           find repo -type d | while read dir; do
-            rel_dir="${dir#repo/}"
-            if [ -z "$rel_dir" ]; then
-              title="APT Repository"
-            else
-              title="Index of /$rel_dir"
-            fi
-            generate_index "$dir" "$title"
+            generate_index "$dir" "Index: $dir"
           done
-          echo "Generated $(find repo -name "index.html" | wc -l) index files:"
-          find repo -name "index.html" | sort
+          echo "Generated $(find repo -name "index.html" | wc -l) index files"
 
       - name: Create index.html
         run: |
