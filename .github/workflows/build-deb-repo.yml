@@ -78,7 +78,15 @@ jobs:
 
           cd ..
           mkdir -p artifacts
-          mv *.deb artifacts/ 2>/dev/null || true
+
+          # 检查是否有 deb 文件生成
+          deb_count=$(ls *.deb 2>/dev/null | wc -l)
+          if [ "$deb_count" -eq 0 ]; then
+            echo "❌ Error: No deb files were built!"
+            exit 1
+          fi
+          echo "✓ Found $deb_count deb file(s)"
+          mv *.deb artifacts/
 
       - name: Upload debs
         uses: actions/upload-artifact@v4
@@ -158,12 +166,27 @@ jobs:
 
       - name: Add packages to repository
         run: |
+          # 检查是否有 deb 文件
+          deb_count=$(ls debs/*.deb 2>/dev/null | wc -l)
+          if [ "$deb_count" -eq 0 ]; then
+            echo "❌ Error: No deb files found!"
+            exit 1
+          fi
+          echo "Found $deb_count deb file(s)"
+
+          # 添加包到仓库
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "=== Adding $deb ==="
+              # 简单检查 deb 文件格式
+              if ! dpkg-deb --info "$deb" >/dev/null 2>&1; then
+                echo "❌ Error: Invalid deb file: $deb"
+                exit 1
+              fi
               reprepro -b repo includedeb trixie "$deb"
             fi
           done
+          echo "✓ All packages added successfully"
 
       - name: Export and verify repository
         run: |
