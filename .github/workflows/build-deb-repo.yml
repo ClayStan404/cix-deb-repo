@@ -53,17 +53,17 @@ jobs:
             # 获取所有包含 debian/ 的项目
             all_projects=$(find . -mindepth 2 -maxdepth 4 -type d -name "debian" | sed 's|./||' | sed 's|/debian||')
 
-            # 获取上次成功运行的 commit
-            last_success=$(git log -1 --pretty=format:"%H" --before="1 hour ago" origin/master 2>/dev/null || echo "")
+            # 使用 HEAD~1 作为比较基准（上次提交）
+            last_commit=$(git rev-parse HEAD~1 2>/dev/null || echo "")
 
-            if [ -z "$last_success" ]; then
-              # 如果是首次运行或无法获取，构建所有包
-              echo "First run or无法获取上次commit，构建所有包"
+            if [ -z "$last_commit" ]; then
+              # 首次运行，构建所有包
+              echo "First run, building all packages"
               projects="$all_projects"
             else
               # 找出变化的项目
-              echo "Checking changes since $last_success"
-              changed_files=$(git diff --name-only "$last_success" HEAD)
+              echo "Checking changes since $last_commit"
+              changed_files=$(git diff --name-only "$last_commit" HEAD)
 
               projects=""
               for proj in $all_projects; do
