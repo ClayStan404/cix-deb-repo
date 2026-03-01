@@ -132,12 +132,15 @@ jobs:
           echo "Using key: $KEY_ID"
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
 
-          # 预载密码 - 通过一次签名让 gpg-agent 缓存
-          {
-            echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --status-fd 1 --sign --local-user "$KEY_ID" >/dev/null 2>&1
-          } || true
-          gpgconf --kill gpg-agent 2>/dev/null || true
+          # 启动 gpg-agent 并预缓存密码
           gpg-agent --daemon --batch 2>/dev/null || true
+          sleep 1
+
+          # 通过签名临时文件来缓存密码
+          echo "test" > /tmp/gpg_cache_test
+          echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --detach-sign --local-user "$KEY_ID" /tmp/gpg_cache_test >/dev/null 2>&1
+          rm -f /tmp/gpg_cache_test /tmp/gpg_cache_test.sig
+          echo "Passphrase cached"
 
       - name: Configure reprepro (unsigned mode)
         run: |
