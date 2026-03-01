@@ -200,10 +200,13 @@ jobs:
           generate_index() {
             local dir="$1"
             local title="$2"
+            # 使用相对路径作为标题
+            local rel_dir="${dir#repo/}"
+            [ -z "$rel_dir" ] && rel_dir="."
             mkdir -p "$dir"
             {
               echo "<!DOCTYPE html>"
-              echo "<html><head><title>$title</title>"
+              echo "<html><head><title>$rel_dir</title>"
               echo "<style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px}"
               echo "a{color:#0366d6;text-decoration:none}"
               echo "a:hover{text-decoration:underline}"
@@ -211,35 +214,40 @@ jobs:
               echo "th,tr:nth-child(even){background:#f6f8fa}"
               echo "th,td{padding:8px;text-align:left}"
               echo "</style></head><body>"
-              echo "<h1>$title</h1>"
+              echo "<h1>Index of /$rel_dir</h1>"
               echo "<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>"
               echo "<tr><td><a href=\"../\">../</a></td><td>-</td><td>-</td></tr>"
+              # 列出目录内容，按名称排序
               for item in "$dir"/*; do
                 [ -e "$item" ] || continue
                 name=$(basename "$item")
                 if [ -d "$item" ]; then
                   size="-"
-                  mod=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
-                  echo "<tr><td><a href=\"$name/\">$name/</a></td><td>$mod</td><td>$size</td></tr>"
+                  mod=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 | cut -d'T' -f1 | cut -d' ' -f1 || echo "-")
+                  mod_time=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
+                  echo "<tr><td><a href=\"$name/\">$name/</a></td><td>$mod_time</td><td>$size</td></tr>"
                 elif [ -f "$item" ]; then
-                  size=$(stat -c "%s" "$item" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "-")
-                  mod=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
-                  echo "<tr><td><a href=\"$name\">$name</a></td><td>$mod</td><td>$size</td></tr>"
+                  size=$(stat -c "%s" "$item" 2>/dev/null | numfmt --to=iec-i --suffix=B 2>/dev/null || echo "-")
+                  mod_time=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
+                  echo "<tr><td><a href=\"$name\">$name</a></td><td>$mod_time</td><td>$size</td></tr>"
                 fi
               done
               echo "</table></body></html>"
             } > "$dir/index.html"
           }
-          generate_index "pool" "Pool - Package Files"
-          find pool -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
-          generate_index "pool/main" "Pool - Main"
-          find pool/main -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
-          generate_index "dists" "Distributions"
-          generate_index "dists/trixie" "Distribution: trixie"
-          generate_index "dists/trixie/main" "Component: main"
-          generate_index "dists/trixie/main/binary-arm64" "Binary ARM64"
-          echo "Generated index files:"
-          find repo -name "index.html" | head -20
+          # 递归为所有目录生成索引
+          echo "Generating index files for all directories..."
+          find repo -type d | while read dir; do
+            rel_dir="${dir#repo/}"
+            if [ -z "$rel_dir" ]; then
+              title="APT Repository"
+            else
+              title="Index of /$rel_dir"
+            fi
+            generate_index "$dir" "$title"
+          done
+          echo "Generated $(find repo -name "index.html" | wc -l) index files:"
+          find repo -name "index.html" | sort
 
       - name: Create index.html
         run: |
