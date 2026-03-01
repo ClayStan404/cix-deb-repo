@@ -1,6 +1,6 @@
-text-tools (1.0.0-1) unstable; urgency=medium
+text-tools (1.0.1-1) unstable; urgency=medium
 
-  * Initial release
+  * Update: Test cache with unique key strategy
   * Added text processing utilities
 
- -- Your Name <your.email@example.com>  Sun, 01 Mar 2026 23:35:00 +0800
+ -- Your Name <your.email@example.com>  Sun, 01 Mar 2026 23:55:00 +0800
