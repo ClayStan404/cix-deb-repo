@@ -188,7 +188,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: repo
-          key: reprepo-repo-${{ run_id }}
+          key: reprepo-repo-${{ github.run_id }}
           restore-keys: reprepro-repo-
 
       - name: Download existing repository (fallback)
