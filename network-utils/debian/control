@@ -1,0 +1,14 @@
+Source: network-utils
+Section: net
+Priority: optional
+Maintainer: Your Name <your.email@example.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: network-utils
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Simple network utilities
+ This package provides simple network diagnostic utilities.
+ Includes ping-check and port-check tools.

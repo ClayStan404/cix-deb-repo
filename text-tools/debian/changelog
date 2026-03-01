@@ -1,0 +1,6 @@
+text-tools (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Added text processing utilities
+
+ -- Your Name <your.email@example.com>  $(date -R +"%a, %d %b %Y %H:%M:%S %z")

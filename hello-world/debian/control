@@ -1,0 +1,14 @@
+Source: hello-world
+Section: utils
+Priority: optional
+Maintainer: Your Name <your.email@example.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: hello-world
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: A simple hello world program
+ This package demonstrates how to create a simple Debian package.
+ It prints "Hello, World!" when executed.
