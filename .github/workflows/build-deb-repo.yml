@@ -57,22 +57,34 @@ jobs:
             last_commit=$(git rev-parse HEAD~1 2>/dev/null || echo "")
 
             if [ -z "$last_commit" ]; then
-              # 首次运行或找不到历史记录，构建所有包
-              echo "First run or no history, building all packages"
+              # 首次运行，构建所有包
+              echo "First run, building all packages"
               projects="$all_projects"
             else
               # 找出变化的项目
               echo "Checking changes since $last_commit"
               changed_files=$(git diff --name-only "$last_commit" HEAD)
 
-              # 如果有任何包变化，构建所有包（简化逻辑，确保仓库完整）
-              # 只有完全没变化时才跳过
-              if [ -n "$changed_files" ]; then
-                echo "Changes detected, building all packages"
-                projects="$all_projects"
-              else
-                echo "No changes at all, skipping build"
-                projects=""
+              projects=""
+              for proj in $all_projects; do
+                # 检查这个项目目录是否有文件变化
+                if echo "$changed_files" | grep -q "^$proj/"; then
+                  echo "  ✓ Changed: $proj"
+                  projects="$projects $proj"
+                else
+                  echo "    Skip: $proj (unchanged)"
+                fi
+              done
+
+              # 如果没有任何包变化但 workflow 文件变了，构建所有包
+              if [ -z "$projects" ]; then
+                if echo "$changed_files" | grep -q "^\.github/workflows/"; then
+                  echo "Workflow changed, building all packages"
+                  projects="$all_projects"
+                else
+                  echo "No packages changed, skipping build"
+                  projects=""
+                fi
               fi
             fi
           fi
