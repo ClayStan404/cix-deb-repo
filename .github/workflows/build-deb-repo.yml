@@ -198,8 +198,8 @@ jobs:
         run: |
           cd repo
           # 为每个目录生成 index.html
-          for dir in $(find repo -type d | sort); do
-            rel_dir="${dir#repo/}"
+          for dir in $(find . -type d | sort); do
+            rel_dir="${dir#./}"
             [ -z "$rel_dir" ] && rel_dir="."
             {
               echo '<!DOCTYPE html>'
@@ -214,11 +214,9 @@ jobs:
               echo '<h1>Index of /'"$rel_dir"'</h1>'
               echo '<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>'
               echo '<tr><td><a href="../">../</a></td><td>-</td><td>-</td></tr>'
-              # 列出目录内容
               for item in "$dir"/*; do
                 [ -e "$item" ] || continue
                 name=$(basename "$item")
-                # 跳过 index.html 本身
                 [ "$name" = "index.html" ] && continue
                 if [ -d "$item" ]; then
                   echo '<tr><td><a href="'"$name"'/">'"$name"'/</a></td><td>-</td><td>-</td></tr>'
@@ -230,7 +228,10 @@ jobs:
               echo '</table></body></html>'
             } > "$dir/index.html"
           done
-          echo "Generated $(find repo -name 'index.html' | wc -l) index files"
+          echo "Generated $(find . -name 'index.html' | wc -l) index files"
+          echo "Sample files:"
+          ls -la pool/index.html 2>/dev/null || echo "pool/index.html not found"
+          ls -la dists/index.html 2>/dev/null || echo "dists/index.html not found"
 
       - name: Create index.html
         run: |
