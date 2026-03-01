@@ -8,7 +8,7 @@ Debian Trixie ARM64 APT 仓库，使用 GitHub Actions 自动构建 deb 包。
 
 ```bash
 # 1. 导入 GPG 公钥
-wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
 
 # 2. 添加仓库源
 echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list

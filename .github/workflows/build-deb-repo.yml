@@ -209,7 +209,7 @@ jobs:
           gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null || echo "Signature verification skipped"
 
           # 导出公钥
-          gpg --armor --export "$KEY_ID" > repo/repository-key.asc
+          gpg --armor --export "$KEY_ID" > repo/cix-deb-repo.asc
           echo "Repository signed successfully"
 
       - name: Create README
@@ -221,7 +221,7 @@ jobs:
 
           ### Import GPG key:
           ```bash
-          wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+          wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
           ```
 
           ### Add repository:
@@ -298,7 +298,7 @@ jobs:
             <p>Debian Trixie ARM64 package repository hosted on GitHub Pages.</p>
             <p><span class="verified">✓ Signed Repository</span> - All packages are cryptographically signed.</p>
             <h2>Quick Setup</h2>
-            <pre>wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+            <pre>wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           sudo apt update
           sudo apt install package-name</pre>
@@ -307,7 +307,7 @@ jobs:
             <ul>
               <li><a href="dists/">dists/</a> - Package indices</li>
               <li><a href="pool/">pool/</a> - Package files</li>
-              <li><a href="repository-key.asc">repository-key.asc</a> - GPG public key</li>
+              <li><a href="cix-deb-repo.asc">cix-deb-repo.asc</a> - GPG public key</li>
             </ul>
             <p><a href="README.md">View README</a></p>
           </body>
