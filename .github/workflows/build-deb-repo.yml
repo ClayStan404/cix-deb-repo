@@ -56,11 +56,6 @@ jobs:
             exit 0
           fi
 
-          # 检查包架构
-          PACKAGE_ARCH=$(grep "^Package:" debian/control | head -1 | awk '{print $2}')
-          ARCH_LINE=$(grep -E "^Architecture:" debian/control | head -1)
-          echo "Package: $PACKAGE_ARCH, Arch line: $ARCH_LINE"
-
           # 设置 arm64 交叉编译环境
           export DEB_BUILD_OPTIONS=arch=arm64
           export DEB_HOST_ARCH=arm64
@@ -112,54 +107,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y reprepro gnupg
 
-      - name: Configure reprepro
-        run: |
-          mkdir -p repo/conf
-          cat > repo/conf/distributions << 'EOF'
-          Origin: Cix Repository
-          Label: Debian Trixie arm64 CIX Packages Repo
-          Suite: stable
-          Codename: trixie
-          Architectures: arm64
-          Components: main
-          Description: APT repository for Cix packages
-          SignWith: yes
-          EOF
-          cat repo/conf/distributions
-
-      - name: List downloaded packages
-        run: |
-          echo "=== Downloaded .deb files ==="
-          ls -la debs/ || echo "No debs found"
-          echo ""
-          echo "=== Package info ==="
-          for deb in debs/*.deb; do
-            if [ -f "$deb" ]; then
-              dpkg-deb -I "$deb" | grep -E "Architecture|Package" || true
-            fi
-          done
-
-      - name: Add packages to repository
-        run: |
-          for deb in debs/*.deb; do
-            if [ -f "$deb" ]; then
-              echo "=== Adding $deb ==="
-              reprepro -b repo --verbose includedeb trixie "$deb"
-            fi
-          done
-
-      - name: Verify repository structure
-        run: |
-          echo "=== Repository structure ==="
-          find repo -type f | head -20
-          echo ""
-          echo "=== Pool contents ==="
-          ls -laR repo/pool/ 2>/dev/null || echo "pool dir not found"
-          echo ""
-          echo "=== Dists contents ==="
-          ls -laR repo/dists/ 2>/dev/null || echo "dists dir not found"
-
-      - name: Sign repository
+      - name: Setup GPG for signing
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -179,79 +127,62 @@ jobs:
           max-cache-ttl 7200
           AGENTCONF
 
-          # 检查密钥是否提供
-          if [ -z "$GPG_PRIVATE_KEY" ]; then
-            echo "ERROR: GPG_PRIVATE_KEY secret is not set!"
-            echo "Please add GPG_PRIVATE_KEY to repository secrets."
-            exit 1
-          fi
-
-          # 检查密钥密码是否提供
-          if [ -z "$GPG_PASSPHRASE" ]; then
-            echo "ERROR: GPG_PASSPHRASE secret is not set!"
-            echo "Please add GPG_PASSPHRASE to repository secrets."
-            exit 1
-          fi
-
-          # 显示密钥前几个字符用于调试
-          echo "Key preview: ${GPG_PRIVATE_KEY:0:50}..."
-
           # 导入私钥
-          echo "Importing private key..."
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import 2>&1 || {
-            echo "ERROR: Failed to import GPG key!"
-            echo "Please check:"
-            echo "  1. GPG_PRIVATE_KEY secret contains the full key (including BEGIN/END lines)"
-            echo "  2. GPG_PASSPHRASE secret is correct"
-            exit 1
-          }
-
-          # 列出密钥
-          echo "Available secret keys:"
-          gpg --list-secret-keys --keyid-format LONG
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
 
           KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
-          if [ -z "$KEY_ID" ]; then
-            echo "ERROR: Could not extract key ID!"
-            exit 1
-          fi
           echo "Using key: $KEY_ID"
+          echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
 
           # 测试密钥是否可用
-          echo "Testing key usability..."
           echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --local-user "$KEY_ID" >/dev/null 2>&1 || {
-            echo "ERROR: GPG key is not usable (wrong passphrase or key revoked?)"
+            echo "ERROR: GPG key is not usable (wrong passphrase?)"
             exit 1
           }
-
-          # 更新 reprepro 配置以使用签名
-          echo "SignWith: $KEY_ID" >> repo/conf/distributions
-          cat repo/conf/distributions
 
           # 预载密码到 gpg-agent
           gpgconf --kill gpg-agent 2>/dev/null || true
           gpg-agent --daemon --batch 2>/dev/null || true
 
-          # 使用 gpg-preset-passphrase 预载密码（如果可用）
           command -v gpg-preset-passphrase 2>/dev/null && \
             /usr/lib/gnupg2/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || \
-            /usr/lib/gnupg/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || \
-            echo "gpg-preset-passphrase not available, trying alternative..."
+            /usr/lib/gnupg/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || true
 
-          # 导出 Release 文件（触发签名）
-          echo "Exporting with signature..."
-          reprepro -b repo --ask-passphrase export || {
-            echo "ERROR: reprepro export failed!"
-            exit 1
-          }
+          echo "✓ GPG setup complete"
 
-          # 验证签名
-          echo "Verifying signature..."
-          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null && echo "✓ Signature verified"
+      - name: Configure reprepro
+        run: |
+          mkdir -p repo/conf
+          cat > repo/conf/distributions << 'EOF'
+          Origin: Cix Repository
+          Label: Debian Trixie arm64 CIX Packages Repo
+          Suite: stable
+          Codename: trixie
+          Architectures: arm64
+          Components: main
+          Description: APT repository for Cix packages
+          SignWith: ${{ env.GPG_KEY_ID }}
+          EOF
+          cat repo/conf/distributions
 
-          # 导出公钥
-          gpg --armor --export "$KEY_ID" > repo/cix-deb-repo.asc
-          echo "Repository signed successfully"
+      - name: Add packages to repository
+        run: |
+          for deb in debs/*.deb; do
+            if [ -f "$deb" ]; then
+              echo "=== Adding $deb ==="
+              reprepro -b repo --ask-passphrase includedeb trixie "$deb"
+            fi
+          done
+
+      - name: Export and verify
+        run: |
+          reprepro -b repo export
+          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null && echo "✓ Signature verified" || echo "Warning: Signature verification failed"
+
+      - name: Export GPG public key
+        run: |
+          gpg --armor --export "$GPG_KEY_ID" > repo/cix-deb-repo.asc
+          echo "Public key exported"
 
       - name: Create README
         run: |
@@ -280,7 +211,6 @@ jobs:
       - name: Create directory indexes
         run: |
           cd repo
-          # 为每个目录生成 index.html
           for dir in $(find . -type d | sort); do
             rel_dir="${dir#./}"
             [ -z "$rel_dir" ] && rel_dir="."
@@ -312,9 +242,6 @@ jobs:
             } > "$dir/index.html"
           done
           echo "Generated $(find . -name 'index.html' | wc -l) index files"
-          echo "Sample files:"
-          ls -la pool/index.html 2>/dev/null || echo "pool/index.html not found"
-          ls -la dists/index.html 2>/dev/null || echo "dists/index.html not found"
 
       - name: Create index.html
         run: |
