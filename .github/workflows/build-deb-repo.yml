@@ -87,47 +87,20 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y reprepro
+          sudo apt-get install -y reprepro gnupg
 
-      - name: Setup GPG (optional)
-        id: setup_gpg
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        continue-on-error: true
-        run: |
-          if [ -n "$GPG_PRIVATE_KEY" ]; then
-            sudo apt-get install -y gnupg
-            mkdir -p ~/.gnupg
-            chmod 700 ~/.gnupg
-            echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
-            echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
-            if echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import 2>&1; then
-              KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
-              echo "key_id=$KEY_ID" >> $GITHUB_OUTPUT
-              echo "gpg_enabled=true" >> $GITHUB_OUTPUT
-              echo "GPG configured: $KEY_ID"
-            else
-              echo "gpg_enabled=false" >> $GITHUB_OUTPUT
-              echo "GPG import failed"
-            fi
-          else
-            echo "gpg_enabled=false" >> $GITHUB_OUTPUT
-            echo "No GPG key provided, using unsigned repo"
-          fi
-
-      - name: Configure reprepro
+      - name: Configure reprepro (unsigned mode)
         run: |
           mkdir -p repo/conf
-          # 只有当 GPG 成功配置时才使用签名
-          if [ "${{ steps.setup_gpg.outputs.gpg_enabled }}" = "true" ] && [ -n "${{ steps.setup_gpg.outputs.key_id }}" ]; then
-            printf 'Origin: Cix Repository\nLabel: Cix Debian Repository\nSuite: stable\nCodename: debian13\nArchitectures: amd64 arm64 source\nComponents: main\nDescription: APT repository for Cix packages\nSignWith: ${{ steps.setup_gpg.outputs.key_id }}\n' > repo/conf/distributions
-            echo "Configuring with GPG signing"
-          else
-            printf 'Origin: Cix Repository\nLabel: Cix Debian Repository\nSuite: stable\nCodename: debian13\nArchitectures: amd64 arm64 source\nComponents: main\nDescription: APT repository for Cix packages (unsigned)\n' > repo/conf/distributions
-            echo "Configuring without GPG signing"
-          fi
-          cat repo/conf/distributions
+          cat > repo/conf/distributions << 'EOF'
+          Origin: Cix Repository
+          Label: Cix Debian Repository
+          Suite: stable
+          Codename: debian13
+          Architectures: amd64 arm64 source
+          Components: main
+          Description: APT repository for Cix packages
+          EOF
 
       - name: Add packages to repository
         run: |
@@ -138,32 +111,39 @@ jobs:
             fi
           done
 
-      - name: Export GPG public key
-        if: steps.setup_gpg.outputs.gpg_enabled == 'true'
+      - name: Sign repository (optional)
+        if: vars.ENABLE_GPG == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        continue-on-error: true
         run: |
-          gpg --armor --export "${{ steps.setup_gpg.outputs.key_id }}" > repo/repository-key.asc
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          echo "SignWith: $KEY_ID" >> repo/conf/distributions
+          # 重新签名 Release 文件
+          reprepro -b repo export
+          gpg --armor --export "$KEY_ID" > repo/repository-key.asc
 
       - name: Create README
         run: |
           cat > repo/README.md <<'EOF'
           # Cix APT Repository
 
-          ## Quick Setup
+          ## Setup
 
-          ### With signature verification (if key available):
-          ```bash
-          wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg >/dev/null
-          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
-          ```
-
-          ### Without verification (for testing):
+          ### Without verification (current mode):
           ```bash
           echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
+          sudo apt update
           ```
 
-          Then run:
+          ### Install packages:
           ```bash
-          sudo apt update
           sudo apt install <package-name>
           ```
           EOF
