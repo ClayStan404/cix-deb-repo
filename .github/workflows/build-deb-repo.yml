@@ -109,10 +109,9 @@ jobs:
             # 配置 GPG 使用 loopback 模式（避免 pinentry 问题）
             mkdir -p ~/.gnupg
             chmod 700 ~/.gnupg
-            cat > ~/.gnupg/gpg-agent.conf << 'EOF'
+            cat > ~/.gnupg/gpg-agent.conf << 'GNUPGEOF'
             allow-loopback-pinentry
-            pinentry-mode loopback
-            EOF
+            GNUPGEOF
 
             # 导入私钥
             echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
@@ -134,8 +133,15 @@ jobs:
         run: |
           mkdir -p repo/conf
 
+          # 如果有 GPG 密钥，添加签名配置
+          if [ "$HAS_GPG" = "true" ]; then
+            SIGN_WITH="SignWith: $KEY_ID"
+          else
+            SIGN_WITH="SignWith: no"
+          fi
+
           # 创建 reprepro 配置
-          cat > repo/conf/distributions << 'EOF'
+          cat > repo/conf/distributions << REPOEOF
           Origin: Cix Repository
           Label: Cix Debian Repository
           Suite: stable
@@ -143,14 +149,8 @@ jobs:
           Architectures: amd64 arm64 source
           Components: main
           Description: APT repository for Cix packages
-          EOF
-
-          # 如果有 GPG 密钥，添加签名配置
-          if [ "$HAS_GPG" = "true" ]; then
-            echo "SignWith: $KEY_ID" >> repo/conf/distributions
-          else
-            echo "SignWith: no" >> repo/conf/distributions
-          fi
+          $SIGN_WITH
+          REPOEOF
 
           echo "=== Reprepro configuration ==="
           cat repo/conf/distributions
@@ -170,15 +170,9 @@ jobs:
             if [ -f "$deb" ]; then
               echo "Adding $deb to repository"
               if [ "$HAS_GPG" = "true" ]; then
-                # 使用环境变量传递密码
-                reprepro -b repo --nothingworkserror includedeb debian13 "$deb" || {
-                  echo "Retrying with explicit GPG configuration..."
-                   reprepro -b repo includedeb debian13 "$deb"
-                }
+                reprepro -b repo --nothingworkserror includedeb debian13 "$deb" || reprepro -b repo includedeb debian13 "$deb"
               else
-                # 不签名模式
-                reprepro -b repo --ask-passphrase includedeb debian13 "$deb" || \
-                reprepro -b repo includedeb debian13 "$deb"
+                reprepro -b repo --ask-passphrase includedeb debian13 "$deb" || reprepro -b repo includedeb debian13 "$deb"
               fi
             fi
           done
@@ -192,7 +186,7 @@ jobs:
 
       - name: Create APT repo info page
         run: |
-          cat > repo/README.md << 'EOF'
+          cat > repo/README.md << 'MDIDEA'
           # Cix APT Repository
 
           ## 添加仓库到你的系统
@@ -221,7 +215,7 @@ jobs:
           sudo apt update
           sudo apt install <package-name>
           ```
-          EOF
+          MDIDEA
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
