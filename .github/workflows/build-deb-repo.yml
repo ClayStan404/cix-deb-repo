@@ -97,19 +97,43 @@ jobs:
           Label: Cix Debian Repository
           Suite: stable
           Codename: debian13
-          Architectures: amd64 arm64 source
+          Architectures: amd64
           Components: main
           Description: APT repository for Cix packages
           EOF
+          cat repo/conf/distributions
+
+      - name: List downloaded packages
+        run: |
+          echo "=== Downloaded .deb files ==="
+          ls -la debs/
+          echo ""
+          echo "=== Package info ==="
+          for deb in debs/*.deb; do
+            if [ -f "$deb" ]; then
+              dpkg-deb -I "$deb" | grep -E "Architecture|Package"
+            fi
+          done
 
       - name: Add packages to repository
         run: |
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
-              echo "Adding $deb"
-              reprepro -b repo includedeb debian13 "$deb"
+              echo "=== Adding $deb ==="
+              reprepro -b repo --verbose includedeb debian13 "$deb"
             fi
           done
+
+      - name: Verify repository structure
+        run: |
+          echo "=== Repository structure ==="
+          find repo -type f | head -20
+          echo ""
+          echo "=== Pool contents ==="
+          ls -la repo/pool/ 2>/dev/null || echo "pool dir not found"
+          echo ""
+          echo "=== Dists contents ==="
+          ls -la repo/dists/ 2>/dev/null || echo "dists dir not found"
 
       - name: Sign repository (optional)
         if: vars.ENABLE_GPG == 'true'
