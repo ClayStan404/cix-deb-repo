@@ -184,6 +184,26 @@ jobs:
           path: debs
           merge-multiple: true
 
+      - name: Restore repository from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: repo
+          key: reprepo-repo-${{ run_id }}
+          restore-keys: reprepro-repo-
+
+      - name: Download existing repository (fallback)
+        if: steps.restore-repo.outputs.cache-miss != 'true'
+        run: |
+          # 尝试从上一次运行恢复仓库
+          echo "Cache miss, trying to download from previous run..."
+          # 注意：这需要上一次运行成功并上传了 repo-backup
+          if [ -d repo/conf ]; then
+            echo "✓ Existing repository found (from cache)"
+          else
+            echo "No existing repository, creating fresh one"
+            mkdir -p repo/conf
+          fi
+
       - name: Install tools
         run: |
           sudo apt-get update
@@ -379,6 +399,18 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+
+      - name: Save repository for next run
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-backup
+          path: repo
+          retention-days: 30
+
+  deploy:
         uses: actions/upload-pages-artifact@v3
         with:
           path: repo
