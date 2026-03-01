@@ -1,0 +1,22 @@
+# 构建产物
+*.deb
+*.dsc
+*.tar.gz
+*.tar.xz
+*.changes
+*.buildinfo
+*.build
+
+# reprepro
+db/
+cgz/
+
+# 临时文件
+artifacts/
+debs/
+repo/
+
+# 编辑器
+*.swp
+*~
+\#*\#

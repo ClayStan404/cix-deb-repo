@@ -1,0 +1,212 @@
+name: Build APT Repository
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # 发现所有包含 debian/ 目录的项目
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.find-projects.outputs.projects }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find projects with debian packaging
+        id: find-projects
+        run: |
+          # 查找所有包含 debian/ 目录的子目录
+          projects=$(find . -mindepth 2 -maxdepth 4 -type d -name "debian" | sed 's|./||' | sed 's|/debian||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "projects=$projects" >> $GITHUB_OUTPUT
+          echo "Found projects: $projects"
+
+  # 构建 deb 包
+  build:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+    container:
+      image: debian:sid
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential devscripts debhelper dpkg-dev pbuilder
+
+      - name: Build package for ${{ matrix.project }}
+        run: |
+          cd "${{ matrix.project }}"
+          # 检查是否有 debian/control
+          if [ ! -f debian/control ]; then
+            echo "No debian/control found, skipping"
+            exit 0
+          fi
+
+          # 安装构建依赖
+          mk-build-deps --install --tool='apt-get --no-install-recommends -y' --remove-deps || true
+
+          # 构建源码包和二进制包
+          dpkg-buildpackage -b -uc -us || dpkg-buildpackage -uc -us
+
+          cd ..
+          # 将构建的 .deb 文件移动到 artifacts 目录
+          mkdir -p artifacts
+          mv *.deb artifacts/ 2>/dev/null || true
+
+      - name: Upload debs
+        uses: actions/upload-artifact@v4
+        with:
+          name: debs-${{ matrix.project }}
+          path: artifacts/*.deb
+          if-no-files-found: ignore
+
+  # 创建 APT 仓库
+  create-repo:
+    needs: [discover, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all debs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: debs-*
+          path: debs
+          merge-multiple: true
+
+      - name: Install reprepro
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y reprepro
+
+      - name: Setup GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+            echo "$GPG_PASSPHRASE" > passphrase.txt
+            chmod 600 passphrase.txt
+            # 获取密钥 ID
+            KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep -E 'sec|ssb' | head -1 | awk '{print $2}' | cut -d'/' -f2)
+            echo "KEY_ID=$KEY_ID" >> $GITHUB_ENV
+            echo "Using GPG key: $KEY_ID"
+          else
+            echo "No GPG key found, creating throwaway key for testing"
+            # 创建临时密钥用于测试（不推荐用于生产）
+          fi
+
+      - name: Configure reprepro
+        run: |
+          mkdir -p repo/conf
+
+          # 创建 reprepro 配置
+          cat > repo/conf/distributions << 'EOF'
+          Origin: Cix Repository
+          Label: Cix Debian Repository
+          Suite: stable
+          Codename: debian13
+          Architectures: amd64 arm64 source
+          Components: main
+          Description: APT repository for Cix packages
+          SignWith: yes
+          EOF
+
+          # 如果有 GPG 密钥 ID，更新配置
+          if [ -n "$KEY_ID" ]; then
+            sed -i "s/SignWith: yes/SignWith: $KEY_ID/" repo/conf/distributions
+          fi
+
+      - name: Add packages to repository
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # 配置 GPG 用于 reprepro
+          if [ -n "$GPG_PASSPHRASE" ]; then
+            echo "使用 GPG_AGENT 签名"
+            export GPG_TTY=$(tty)
+          fi
+
+          # 添加所有 .deb 文件到仓库
+          for deb in debs/*.deb; do
+            if [ -f "$deb" ]; then
+              echo "Adding $deb to repository"
+              if [ -n "$GPG_PASSPHRASE" ]; then
+                reprepro -b repo --ask-passphrase includedeb debian13 "$deb"
+              else
+                reprepro -b repo includedeb debian13 "$deb"
+              fi
+            fi
+          done
+
+      - name: Export GPG public key
+        run: |
+          if [ -n "$KEY_ID" ]; then
+            gpg --armor --export "$KEY_ID" > repo/repository-key.asc
+          fi
+
+      - name: Create APT repo info page
+        run: |
+          cat > repo/README.md << 'EOF'
+          # Cix APT Repository
+
+          ## 添加仓库到你的系统
+
+          首先，导入 GPG 密钥：
+          ```bash
+          wget -qO- https://<username>.github.io/<repo>/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+          ```
+
+          然后添加仓库源：
+          ```bash
+          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://<username>.github.io/<repo> debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
+          ```
+
+          更新包列表并安装：
+          ```bash
+          sudo apt update
+          sudo apt install <package-name>
+          ```
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+
+  # 部署到 GitHub Pages
+  deploy:
+    needs: create-repo
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

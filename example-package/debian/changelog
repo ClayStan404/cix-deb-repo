@@ -1,0 +1,6 @@
+example-package (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Example package for Cix repository
+
+ -- Your Name <your.email@example.com>  $(date -R)

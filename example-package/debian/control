@@ -1,0 +1,17 @@
+Source: example-package
+Section: utils
+Priority: optional
+Maintainer: Your Name <your.email@example.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/yourusername/cix-deb-repo
+
+Package: example-package
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Example package for Cix repository
+ This is an example package to demonstrate the debian
+ packaging structure for the Cix APT repository.
+ .
+ It serves as a template for adding new packages to the
+ repository.
