@@ -115,7 +115,6 @@ jobs:
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
 
-          # 配置 GPG 和 gpg-agent
           cat > ~/.gnupg/gpg.conf << 'GPGCONF'
           use-agent
           pinentry-mode loopback
@@ -127,34 +126,20 @@ jobs:
           max-cache-ttl 7200
           AGENTCONF
 
-          # 导入私钥
           echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
 
           KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
           echo "Using key: $KEY_ID"
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
 
-          # 预载密码到 gpg-agent - 使用环境变量方式
-          gpgconf --kill gpg-agent 2>/dev/null || true
-
-          # 方法：通过 GPG_TTY 和环境变量传递密码
-          GPG_TTY=$(tty)
-          export GPG_TTY
-
-          # 方案：使用 echo 和管道传递密码给 gpg2
-          # 首先执行一次签名让 gpg-agent 认识密码
+          # 预载密码 - 通过一次签名让 gpg-agent 缓存
           {
-            echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --status-fd 1 --sign --local-user "$KEY_ID" >/dev/null
-          } || {
-            echo "Failed to cache passphrase in gpg-agent"
-          }
-
-          # 重新启动 gpg-agent
+            echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --status-fd 1 --sign --local-user "$KEY_ID >/dev/null 2>&1
+          } || true
+          gpgconf --kill gpg-agent 2>/dev/null || true
           gpg-agent --daemon --batch 2>/dev/null || true
 
-          echo "✓ GPG setup complete""
-
-      - name: Configure reprepro
+      - name: Configure reprepro (unsigned mode)
         run: |
           mkdir -p repo/conf
           cat > repo/conf/distributions << 'EOF'
@@ -165,28 +150,32 @@ jobs:
           Architectures: arm64
           Components: main
           Description: APT repository for Cix packages
-          SignWith: ${{ env.GPG_KEY_ID }}
           EOF
           cat repo/conf/distributions
 
-      - name: Add packages to repository
+      - name: Add packages to repository (unsigned)
         run: |
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "=== Adding $deb ==="
-              reprepro -b repo --ask-passphrase includedeb trixie "$deb"
+              reprepro -b repo includedeb trixie "$deb"
             fi
           done
 
-      - name: Export and verify
+      - name: Sign repository
         run: |
-          reprepro -b repo export
-          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null && echo "✓ Signature verified" || echo "Warning: Signature verification failed"
+          # 更新配置以启用签名
+          echo "SignWith: $GPG_KEY_ID" >> repo/conf/distributions
+          cat repo/conf/distributions
 
-      - name: Export GPG public key
-        run: |
+          # 导出仓库并签名
+          reprepro -b repo --ask-passphrase export
+
+          # 验证签名
+          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null && echo "✓ Signature verified"
+
+          # 导出公钥
           gpg --armor --export "$GPG_KEY_ID" > repo/cix-deb-repo.asc
-          echo "Public key exported"
 
       - name: Create README
         run: |
@@ -202,7 +191,10 @@ jobs:
 
           ### Add repository:
           ```bash
-          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+
+          # 或直接使用：
+          echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           ```
 
           ### Install packages:
@@ -271,7 +263,8 @@ jobs:
             <p><span class="verified">✓ Signed Repository</span> - All packages are cryptographically signed.</p>
             <h2>Quick Setup</h2>
             <pre>wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+
           sudo apt update
           sudo apt install package-name</pre>
             <p><strong>Architecture:</strong> ARM64 only</p>
