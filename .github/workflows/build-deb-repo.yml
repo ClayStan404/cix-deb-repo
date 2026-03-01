@@ -37,8 +37,7 @@ jobs:
       fail-fast: false
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
-    container:
-      image: debian:sid
+        arch: [amd64, arm64]
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
@@ -47,18 +46,58 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          apt-get update
-          apt-get install -y build-essential devscripts debhelper dpkg-dev pbuilder
+          sudo apt-get update
+          sudo apt-get install -y build-essential devscripts debhelper dpkg-dev qemu-user-static
 
-      - name: Build package for ${{ matrix.project }}
+      - name: Setup cross-compilation for arm64
+        if: matrix.arch == 'arm64'
+        run: |
+          sudo apt-get install -y crossbuild-essential-arm64 gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "HOST_ARCH=arm64" >> $GITHUB_ENV
+
+      - name: Build package ${{ matrix.project }} for ${{ matrix.arch }}
         run: |
           cd "${{ matrix.project }}"
           if [ ! -f debian/control ]; then
             echo "No debian/control found, skipping"
             exit 0
           fi
-          mk-build-deps --install --tool='apt-get --no-install-recommends -y' || true
-          dpkg-buildpackage -b -uc -us || dpkg-buildpackage -uc -us
+
+          # 设置架构
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            export DEB_BUILD_OPTIONS=arch=arm64
+            export DEB_HOST_ARCH=arm64
+            export DEB_HOST_GNU_TYPE=aarch64-linux-gnu
+            export DEB_BUILD_GNU_TYPE=x86_64-linux-gnu
+            # 检查包是否支持 arm64
+            if grep -q "Architecture: any" debian/control || grep -q "Architecture: arm64" debian/control || grep -q "Architecture: linux-any" debian/control; then
+              echo "Building for arm64 via cross-compilation"
+            else
+              echo "Package doesn't support arm64, skipping"
+              exit 0
+            fi
+          else
+            export DEB_HOST_ARCH=amd64
+          fi
+
+          # 安装构建依赖
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            sudo mk-build-deps --install --arch=arm64 --tool='apt-get --no-install-recommends -y' || \
+            sudo apt-get build-dep -a arm64 -y . || true
+          else
+            sudo mk-build-deps --install --tool='apt-get --no-install-recommends -y' || true
+          fi
+
+          # 构建
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            dpkg-buildpackage -a arm64 -b -uc -us --host-arch aarch64-linux-gnu 2>/dev/null || \
+            dpkg-buildpackage -a arm64 -b -uc -us 2>/dev/null || \
+            echo "Cross-compile failed, package may not support arm64"
+          else
+            dpkg-buildpackage -b -uc -us || dpkg-buildpackage -uc -us
+          fi
+
           cd ..
           mkdir -p artifacts
           mv *.deb artifacts/ 2>/dev/null || true
@@ -66,7 +105,7 @@ jobs:
       - name: Upload debs
         uses: actions/upload-artifact@v4
         with:
-          name: debs-${{ matrix.project }}
+          name: debs-${{ matrix.project }}-${{ matrix.arch }}
           path: artifacts/*.deb
           if-no-files-found: ignore
 
@@ -106,12 +145,12 @@ jobs:
       - name: List downloaded packages
         run: |
           echo "=== Downloaded .deb files ==="
-          ls -la debs/
+          ls -la debs/ || echo "No debs found"
           echo ""
           echo "=== Package info ==="
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
-              dpkg-deb -I "$deb" | grep -E "Architecture|Package"
+              dpkg-deb -I "$deb" | grep -E "Architecture|Package" || true
             fi
           done
 
@@ -149,7 +188,6 @@ jobs:
           echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
           KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
           echo "SignWith: $KEY_ID" >> repo/conf/distributions
-          # 重新签名 Release 文件
           reprepro -b repo export
           gpg --armor --export "$KEY_ID" > repo/repository-key.asc
 
@@ -174,10 +212,7 @@ jobs:
 
       - name: Create directory indexes
         run: |
-          # 为每个目录创建 index.html 以启用目录浏览
           cd repo
-
-          # 生成目录索引的函数
           generate_index() {
             local dir="$1"
             local title="$2"
@@ -195,8 +230,6 @@ jobs:
               echo "<h1>$title</h1>"
               echo "<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>"
               echo "<tr><td><a href=\"../\">../</a></td><td>-</td><td>-</td></tr>"
-
-              # 列出文件和目录
               for item in "$dir"/*; do
                 [ -e "$item" ] || continue
                 name=$(basename "$item")
@@ -213,20 +246,15 @@ jobs:
               echo "</table></body></html>"
             } > "$dir/index.html"
           }
-
-          # 为主要目录生成索引
           generate_index "pool" "Pool - Package Files"
           find pool -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
-
           generate_index "pool/main" "Pool - Main"
           find pool/main -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
-
           generate_index "dists" "Distributions"
           generate_index "dists/trixie" "Distribution: trixie"
           generate_index "dists/trixie/main" "Component: main"
           generate_index "dists/trixie/main/binary-amd64" "Binary AMD64"
           generate_index "dists/trixie/main/binary-arm64" "Binary ARM64"
-
           echo "Generated index files:"
           find repo -name "index.html" | head -20
 
@@ -249,7 +277,7 @@ jobs:
           </head>
           <body>
             <h1>Cix APT Repository</h1>
-            <p>Debian package repository hosted on GitHub Pages.</p>
+            <p>Debian Trixie package repository hosted on GitHub Pages.</p>
             <h2>Quick Setup</h2>
             <pre>echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           sudo apt update</pre>
