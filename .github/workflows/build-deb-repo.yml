@@ -142,7 +142,7 @@ jobs:
           rm -f /tmp/gpg_cache_test /tmp/gpg_cache_test.sig
           echo "Passphrase cached"
 
-      - name: Configure reprepro (unsigned mode)
+      - name: Configure reprepro with signing
         run: |
           mkdir -p repo/conf
           cat > repo/conf/distributions << 'EOF'
@@ -153,10 +153,11 @@ jobs:
           Architectures: arm64
           Components: main
           Description: APT repository for Cix packages
+          SignWith: $GPG_KEY_ID
           EOF
           cat repo/conf/distributions
 
-      - name: Add packages to repository (unsigned)
+      - name: Add packages to repository
         run: |
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
@@ -165,14 +166,10 @@ jobs:
             fi
           done
 
-      - name: Sign repository
+      - name: Export and verify repository
         run: |
-          # 更新配置以启用签名
-          echo "SignWith: $GPG_KEY_ID" >> repo/conf/distributions
-          cat repo/conf/distributions
-
-          # 导出仓库并签名
-          reprepro -b repo --ask-passphrase export
+          # 导出仓库（自动签名）
+          reprepro -b repo export
 
           # 验证签名
           gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null && echo "✓ Signature verified"
