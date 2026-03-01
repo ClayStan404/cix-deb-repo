@@ -197,60 +197,40 @@ jobs:
       - name: Create directory indexes
         run: |
           cd repo
-          generate_index() {
-            local dir="$1"
-            local title="$2"
-            local rel_dir="${dir#repo/}"
+          # 为每个目录生成 index.html
+          for dir in $(find repo -type d | sort); do
+            rel_dir="${dir#repo/}"
             [ -z "$rel_dir" ] && rel_dir="."
-            mkdir -p "$dir"
             {
-              echo "<!DOCTYPE html>"
-              echo "<html><head><title>$rel_dir</title>"
-              echo "<style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px}"
-              echo "a{color:#0366d6;text-decoration:none}"
-              echo "a:hover{text-decoration:underline}"
-              echo "table{width:100%;border-collapse:collapse}"
-              echo "th,tr:nth-child(even){background:#f6f8fa}"
-              echo "th,td{padding:8px;text-align:left}"
-              echo "</style></head><body>"
-              echo "<h1>Index of /$rel_dir</h1>"
-              echo "<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>"
-              echo "<tr><td><a href=\"../\">../</a></td><td>-</td><td>-</td></tr>"
+              echo '<!DOCTYPE html>'
+              echo '<html><head><title>'"Index of /$rel_dir"'</title>'
+              echo '<style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px}'
+              echo 'a{color:#0366d6;text-decoration:none}'
+              echo 'a:hover{text-decoration:underline}'
+              echo 'table{width:100%;border-collapse:collapse}'
+              echo 'th,tr:nth-child(even){background:#f6f8fa}'
+              echo 'th,td{padding:8px;text-align:left}'
+              echo '</style></head><body>'
+              echo '<h1>Index of /'"$rel_dir"'</h1>'
+              echo '<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>'
+              echo '<tr><td><a href="../">../</a></td><td>-</td><td>-</td></tr>'
+              # 列出目录内容
               for item in "$dir"/*; do
                 [ -e "$item" ] || continue
                 name=$(basename "$item")
+                # 跳过 index.html 本身
                 [ "$name" = "index.html" ] && continue
                 if [ -d "$item" ]; then
-                  size="-"
-                  mod_time=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
-                  echo "<tr><td><a href=\"$name/\">$name/</a></td><td>$mod_time</td><td>$size</td></tr>"
+                  echo '<tr><td><a href="'"$name"'/">'"$name"'/</a></td><td>-</td><td>-</td></tr>'
                 elif [ -f "$item" ]; then
-                  size=$(stat -c "%s" "$item" 2>/dev/null | numfmt --to=iec-i --suffix=B 2>/dev/null || echo "-")
-                  mod_time=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
-                  echo "<tr><td><a href=\"$name\">$name</a></td><td>$mod_time</td><td>$size</td></tr>"
+                  size=$(stat -c "%s" "$item" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "-")
+                  echo '<tr><td><a href="'"$name"'">'"$name"'</a></td><td>-</td><td>'"$size"'</td></tr>'
                 fi
               done
-              echo "</table></body></html>"
+              echo '</table></body></html>'
             } > "$dir/index.html"
-          }
-          echo "=== Finding all directories ==="
-          find repo -type d | sort
-          echo ""
-          echo "=== Generating index files ==="
-          find repo -type d | while read dir; do
-            echo "Generating: $dir/index.html"
-            generate_index "$dir" "Index: $dir"
           done
-          echo ""
-          echo "=== Verification ==="
-          echo "Generated index.html files:"
-          find repo -name "index.html" | sort
-          echo ""
-          echo "Total: $(find repo -name "index.html" | wc -l) index files"
-          echo ""
-          echo "=== Checking specific directories ==="
-          ls -la repo/dists/index.html 2>/dev/null || echo "  dists/index.html NOT FOUND"
-          ls -la repo/dists/trixie/index.html 2>/dev/null || echo "  dists/trixie/index.html NOT FOUND"
+          echo "Generated $(find repo -name 'index.html' | wc -l) index files"
 
       - name: Create index.html
         run: |
