@@ -411,11 +411,6 @@ jobs:
           retention-days: 30
 
   deploy:
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: repo
-
-  deploy:
     needs: create-repo
     if: needs.discover.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
