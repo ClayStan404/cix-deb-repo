@@ -134,7 +134,7 @@ jobs:
 
           # 预载密码 - 通过一次签名让 gpg-agent 缓存
           {
-            echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --status-fd 1 --sign --local-user "$KEY_ID >/dev/null 2>&1
+            echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --status-fd 1 --sign --local-user "$KEY_ID" >/dev/null 2>&1
           } || true
           gpgconf --kill gpg-agent 2>/dev/null || true
           gpg-agent --daemon --batch 2>/dev/null || true
@@ -191,7 +191,7 @@ jobs:
 
           ### Add repository:
           ```bash
-          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
 
           # 或直接使用：
           echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
@@ -263,10 +263,9 @@ jobs:
             <p><span class="verified">✓ Signed Repository</span> - All packages are cryptographically signed.</p>
             <h2>Quick Setup</h2>
             <pre>wget -qO- https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo/cix-deb-repo.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
-
-          sudo apt update
-          sudo apt install package-name</pre>
+            echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+            sudo apt update
+            sudo apt install package-name</pre>
             <p><strong>Architecture:</strong> ARM64 only</p>
             <h2>Available Packages</h2>
             <ul>
