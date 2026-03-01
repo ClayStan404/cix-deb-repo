@@ -7,8 +7,8 @@ Standards-Version: 4.6.2
 Rules-Requires-Root: no
 
 Package: network-utils
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Architecture: all
+Depends: ${misc:Depends}, iputils-ping
 Description: Simple network utilities
  This package provides simple network diagnostic utilities.
- Includes ping-check and port-check tools.
+ Includes ping-check tool.

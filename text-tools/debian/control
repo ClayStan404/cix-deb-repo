@@ -7,8 +7,8 @@ Standards-Version: 4.6.2
 Rules-Requires-Root: no
 
 Package: text-tools
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Architecture: all
+Depends: ${misc:Depends}, coreutils
 Description: Simple text processing utilities
  This package provides simple text manipulation utilities.
  Includes word-count and line-counter tools.
