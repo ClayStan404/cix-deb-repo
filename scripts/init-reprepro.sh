@@ -28,10 +28,10 @@ mkdir -p "$REPO_DIR/conf"
 # 创建 distributions 配置
 cat > "$REPO_DIR/conf/distributions" << 'EOF'
 Origin: Cix Repository
-Label: Cix Debian Repository
+Label: Debian Trixie arm64 CIX Packages Repo
 Suite: stable
-Codename: debian13
-Architectures: amd64 arm64 source
+Codename: trixie
+Architectures: arm64 source
 Components: main
 Description: APT repository for Cix packages
 SignWith: yes

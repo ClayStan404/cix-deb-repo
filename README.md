@@ -105,7 +105,7 @@ gpg --armor --export your@email.com
 wget -qO- https://<username>.github.io/<repo>/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
 
 # 2. 添加仓库源
-echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://<username>.github.io/<repo> debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
+echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://<username>.github.io/<repo> trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
 
 # 3. 更新并安装
 sudo apt update

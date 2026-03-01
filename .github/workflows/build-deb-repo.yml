@@ -94,10 +94,10 @@ jobs:
           mkdir -p repo/conf
           cat > repo/conf/distributions << 'EOF'
           Origin: Cix Repository
-          Label: Cix Debian Repository
+          Label: Debian Trixie CIX Packages Repo
           Suite: stable
-          Codename: debian13
-          Architectures: amd64
+          Codename: trixie
+          Architectures: arm64 amd64
           Components: main
           Description: APT repository for Cix packages
           EOF
@@ -120,7 +120,7 @@ jobs:
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "=== Adding $deb ==="
-              reprepro -b repo --verbose includedeb debian13 "$deb"
+              reprepro -b repo --verbose includedeb trixie "$deb"
             fi
           done
 
@@ -162,7 +162,7 @@ jobs:
 
           ### Without verification (current mode):
           ```bash
-          echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
+          echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           sudo apt update
           ```
 
@@ -222,9 +222,10 @@ jobs:
           find pool/main -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
 
           generate_index "dists" "Distributions"
-          generate_index "dists/debian13" "Distribution: debian13"
-          generate_index "dists/debian13/main" "Component: main"
-          generate_index "dists/debian13/main/binary-amd64" "Binary AMD64"
+          generate_index "dists/trixie" "Distribution: trixie"
+          generate_index "dists/trixie/main" "Component: main"
+          generate_index "dists/trixie/main/binary-amd64" "Binary AMD64"
+          generate_index "dists/trixie/main/binary-arm64" "Binary ARM64"
 
           echo "Generated index files:"
           find repo -name "index.html" | head -20
@@ -250,7 +251,7 @@ jobs:
             <h1>Cix APT Repository</h1>
             <p>Debian package repository hosted on GitHub Pages.</p>
             <h2>Quick Setup</h2>
-            <pre>echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
+            <pre>echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           sudo apt update</pre>
             <h2>Install Packages</h2>
             <pre>sudo apt install package-name</pre>
