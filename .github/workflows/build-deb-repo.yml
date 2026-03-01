@@ -4,6 +4,12 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      build_all:
+        description: '构建所有包（忽略变化检测）'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,19 +34,77 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       projects: ${{ steps.find-projects.outputs.projects }}
+      has_changes: ${{ steps.find-projects.outputs.has_changes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史用于 diff
 
-      - name: Find projects with debian packaging
+      - name: Find changed packages
         id: find-projects
         run: |
-          projects=$(find . -mindepth 2 -maxdepth 4 -type d -name "debian" | sed 's|./||' | sed 's|/debian||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "projects=$projects" >> $GITHUB_OUTPUT
-          echo "Found projects: $projects"
+          # 检查是否手动触发要求构建所有包
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.build_all }}" = "true" ]; then
+            echo "Manual trigger: building all packages"
+            all_projects=$(find . -mindepth 2 -maxdepth 4 -type d -name "debian" | sed 's|./||' | sed 's|/debian||')
+            projects="$all_projects"
+          else
+            # 获取所有包含 debian/ 的项目
+            all_projects=$(find . -mindepth 2 -maxdepth 4 -type d -name "debian" | sed 's|./||' | sed 's|/debian||')
+
+            # 获取上次成功运行的 commit
+            last_success=$(git log -1 --pretty=format:"%H" --before="1 hour ago" origin/master 2>/dev/null || echo "")
+
+            if [ -z "$last_success" ]; then
+              # 如果是首次运行或无法获取，构建所有包
+              echo "First run or无法获取上次commit，构建所有包"
+              projects="$all_projects"
+            else
+              # 找出变化的项目
+              echo "Checking changes since $last_success"
+              changed_files=$(git diff --name-only "$last_success" HEAD)
+
+              projects=""
+              for proj in $all_projects; do
+                # 检查这个项目目录是否有文件变化
+                if echo "$changed_files" | grep -q "^$proj/"; then
+                  echo "  ✓ Changed: $proj"
+                  projects="$projects $proj"
+                else
+                  echo "    Skip: $proj (unchanged)"
+                fi
+              done
+
+              # 如果没有任何包变化但 workflow 文件变了，构建所有包
+              if [ -z "$projects" ]; then
+                if echo "$changed_files" | grep -q "^\.github/workflows/"; then
+                  echo "Workflow changed, building all packages"
+                  projects="$all_projects"
+                else
+                  echo "No packages changed, skipping build"
+                  projects=""
+                fi
+              fi
+            fi
+          fi
+
+          # 转换为 JSON 数组
+          if [ -n "$projects" ]; then
+            projects_json=$(echo "$projects" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            # 空数组
+            projects_json='["example-package"]'  # 占位，避免 matrix 失败
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "projects=$projects_json" >> $GITHUB_OUTPUT
+          echo "projects=$projects_json"
 
   build:
     needs: discover
+    if: needs.discover.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -106,6 +170,7 @@ jobs:
 
   create-repo:
     needs: [discover, build]
+    if: needs.discover.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -319,6 +384,7 @@ jobs:
 
   deploy:
     needs: create-repo
+    if: needs.discover.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
