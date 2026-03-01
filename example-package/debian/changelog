@@ -1,6 +1,6 @@
-example-package (1.0.1-1) unstable; urgency=medium
+example-package (1.0.2-1) unstable; urgency=medium
 
-  * Update: Test incremental build with 2 packages
+  * Update: Final test with 2 packages
   * Example package for Cix repository
 
- -- Your Name <your.email@example.com>  Sun, 01 Mar 2026 23:45:00 +0800
+ -- Your Name <your.email@example.com>  Mon, 02 Mar 2026 00:05:00 +0800
