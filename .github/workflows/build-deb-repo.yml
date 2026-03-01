@@ -15,7 +15,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 发现所有包含 debian/ 目录的项目
   discover:
     runs-on: ubuntu-latest
     outputs:
@@ -27,12 +26,10 @@ jobs:
       - name: Find projects with debian packaging
         id: find-projects
         run: |
-          # 查找所有包含 debian/ 目录的子目录
           projects=$(find . -mindepth 2 -maxdepth 4 -type d -name "debian" | sed 's|./||' | sed 's|/debian||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "projects=$projects" >> $GITHUB_OUTPUT
           echo "Found projects: $projects"
 
-  # 构建 deb 包
   build:
     needs: discover
     runs-on: ubuntu-latest
@@ -56,20 +53,13 @@ jobs:
       - name: Build package for ${{ matrix.project }}
         run: |
           cd "${{ matrix.project }}"
-          # 检查是否有 debian/control
           if [ ! -f debian/control ]; then
             echo "No debian/control found, skipping"
             exit 0
           fi
-
-          # 安装构建依赖
           mk-build-deps --install --tool='apt-get --no-install-recommends -y' || true
-
-          # 构建源码包和二进制包
           dpkg-buildpackage -b -uc -us || dpkg-buildpackage -uc -us
-
           cd ..
-          # 将构建的 .deb 文件移动到 artifacts 目录
           mkdir -p artifacts
           mv *.deb artifacts/ 2>/dev/null || true
 
@@ -80,7 +70,6 @@ jobs:
           path: artifacts/*.deb
           if-no-files-found: ignore
 
-  # 创建 APT 仓库
   create-repo:
     needs: [discover, build]
     runs-on: ubuntu-latest
@@ -106,24 +95,14 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           if [ -n "$GPG_PRIVATE_KEY" ]; then
-            # 配置 GPG 使用 loopback 模式（避免 pinentry 问题）
             mkdir -p ~/.gnupg
             chmod 700 ~/.gnupg
-            cat > ~/.gnupg/gpg-agent.conf << 'GNUPGEOF'
-            allow-loopback-pinentry
-            GNUPGEOF
-
-            # 导入私钥
+            echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
             echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
-
-            # 获取密钥 ID
             KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep -E 'sec|ssb' | head -1 | awk '{print $2}' | cut -d'/' -f2)
             echo "KEY_ID=$KEY_ID" >> $GITHUB_ENV
             echo "HAS_GPG=true" >> $GITHUB_ENV
             echo "Using GPG key: $KEY_ID"
-
-            # 配置 gpg-agent
-            gpg-agent --daemon 2>/dev/null || true
           else
             echo "HAS_GPG=false" >> $GITHUB_ENV
             echo "No GPG key found, creating unsigned repository"
@@ -132,47 +111,34 @@ jobs:
       - name: Configure reprepro
         run: |
           mkdir -p repo/conf
-
-          # 如果有 GPG 密钥，添加签名配置
           if [ "$HAS_GPG" = "true" ]; then
             SIGN_WITH="SignWith: $KEY_ID"
           else
             SIGN_WITH="SignWith: no"
           fi
-
-          # 创建 reprepro 配置
-          cat > repo/conf/distributions << REPOEOF
-          Origin: Cix Repository
-          Label: Cix Debian Repository
-          Suite: stable
-          Codename: debian13
-          Architectures: amd64 arm64 source
-          Components: main
-          Description: APT repository for Cix packages
-          $SIGN_WITH
-          REPOEOF
-
-          echo "=== Reprepro configuration ==="
+          {
+            echo "Origin: Cix Repository"
+            echo "Label: Cix Debian Repository"
+            echo "Suite: stable"
+            echo "Codename: debian13"
+            echo "Architectures: amd64 arm64 source"
+            echo "Components: main"
+            echo "Description: APT repository for Cix packages"
+            echo "$SIGN_WITH"
+          } > repo/conf/distributions
           cat repo/conf/distributions
 
       - name: Add packages to repository
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          # 配置 GPG 环境变量
-          if [ "$HAS_GPG" = "true" ]; then
-            export GPG_TTY=$(tty)
-            echo "GPG_TTY=$GPG_TTY"
-          fi
-
-          # 添加所有 .deb 文件到仓库
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "Adding $deb to repository"
               if [ "$HAS_GPG" = "true" ]; then
                 reprepro -b repo --nothingworkserror includedeb debian13 "$deb" || reprepro -b repo includedeb debian13 "$deb"
               else
-                reprepro -b repo --ask-passphrase includedeb debian13 "$deb" || reprepro -b repo includedeb debian13 "$deb"
+                reprepro -b repo includedeb debian13 "$deb"
               fi
             fi
           done
@@ -186,24 +152,19 @@ jobs:
 
       - name: Create APT repo info page
         run: |
-          cat > repo/README.md << 'MDIDEA'
+          cat > repo/README.md <<'EOF'
           # Cix APT Repository
 
           ## 添加仓库到你的系统
 
-          ### 方法 1: 使用 GPG 签名验证（推荐）
+          ### 使用 GPG 签名验证（推荐）
 
-          导入 GPG 密钥：
           ```bash
           wget -qO- https://<username>.github.io/<repo>/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
-          ```
-
-          添加仓库源：
-          ```bash
           echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://<username>.github.io/<repo> debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
           ```
 
-          ### 方法 2: 不验证签名（仅用于测试）
+          ### 不验证签名（仅用于测试）
 
           ```bash
           echo "deb [trusted=yes] https://<username>.github.io/<repo> debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
@@ -215,7 +176,7 @@ jobs:
           sudo apt update
           sudo apt install <package-name>
           ```
-          MDIDEA
+          EOF
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -225,7 +186,6 @@ jobs:
         with:
           path: repo
 
-  # 部署到 GitHub Pages
   deploy:
     needs: create-repo
     runs-on: ubuntu-latest
