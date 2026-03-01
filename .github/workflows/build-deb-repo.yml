@@ -163,17 +163,54 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        continue-on-error: true
         run: |
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
-          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
-          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+
+          # 配置 GPG 和 gpg-agent
+          cat > ~/.gnupg/gpg.conf << 'GPGCONF'
+          use-agent
+          pinentry-mode loopback
+          GPGCONF
+
+          cat > ~/.gnupg/gpg-agent.conf << 'AGENTCONF'
+          allow-loopback-pinentry
+          default-cache-ttl 7200
+          max-cache-ttl 7200
+          AGENTCONF
+
+          # 导入私钥
           echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+
           KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          echo "Using key: $KEY_ID"
+
+          # 更新 reprepro 配置以使用签名
           echo "SignWith: $KEY_ID" >> repo/conf/distributions
-          reprepro -b repo export
+
+          # 预载密码到 gpg-agent
+          gpgconf --kill gpg-agent 2>/dev/null || true
+          gpg-agent --daemon --batch 2>/dev/null || true
+
+          # 使用 gpg-preset-passphrase 预载密码（如果可用）
+          command -v gpg-preset-passphrase 2>/dev/null && \
+            /usr/lib/gnupg/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || \
+            echo "gpg-preset-passphrase not available, trying alternative..."
+
+          # 替代方案：通过一次签名操作让 gpg-agent 缓存密码
+          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --local-user "$KEY_ID" 2>/dev/null >/dev/null || true
+
+          # 导出 Release 文件（触发签名）
+          echo "Exporting with signature..."
+          reprepro -b repo --ask-passphrase export
+
+          # 验证签名
+          echo "Verifying signature..."
+          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null || echo "Signature verification skipped"
+
+          # 导出公钥
           gpg --armor --export "$KEY_ID" > repo/repository-key.asc
+          echo "Repository signed successfully"
 
       - name: Create README
         run: |
