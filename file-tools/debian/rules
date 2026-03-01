@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_install:
+	# 手动安装脚本
+	install -d debian/file-tools/usr/bin
+	install -m 755 file-info.sh debian/file-tools/usr/bin/file-info
+	install -m 755 dir-list.sh debian/file-tools/usr/bin/dir-list

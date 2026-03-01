@@ -1,0 +1,14 @@
+Source: file-tools
+Section: utils
+Priority: optional
+Maintainer: Your Name <your.email@example.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: file-tools
+Architecture: all
+Depends: ${misc:Depends}, coreutils
+Description: Simple file management utilities
+ This package provides simple file manipulation utilities.
+ Includes file-info and dir-list tools.

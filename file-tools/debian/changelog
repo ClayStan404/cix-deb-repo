@@ -1,0 +1,6 @@
+file-tools (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Added file management utilities
+
+ -- Your Name <your.email@example.com>  Mon, 02 Mar 2026 01:20:00 +0800
