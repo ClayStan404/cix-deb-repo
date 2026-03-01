@@ -179,14 +179,54 @@ jobs:
           max-cache-ttl 7200
           AGENTCONF
 
+          # 检查密钥是否提供
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "ERROR: GPG_PRIVATE_KEY secret is not set!"
+            echo "Please add GPG_PRIVATE_KEY to repository secrets."
+            exit 1
+          fi
+
+          # 检查密钥密码是否提供
+          if [ -z "$GPG_PASSPHRASE" ]; then
+            echo "ERROR: GPG_PASSPHRASE secret is not set!"
+            echo "Please add GPG_PASSPHRASE to repository secrets."
+            exit 1
+          fi
+
+          # 显示密钥前几个字符用于调试
+          echo "Key preview: ${GPG_PRIVATE_KEY:0:50}..."
+
           # 导入私钥
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+          echo "Importing private key..."
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import 2>&1 || {
+            echo "ERROR: Failed to import GPG key!"
+            echo "Please check:"
+            echo "  1. GPG_PRIVATE_KEY secret contains the full key (including BEGIN/END lines)"
+            echo "  2. GPG_PASSPHRASE secret is correct"
+            exit 1
+          }
+
+          # 列出密钥
+          echo "Available secret keys:"
+          gpg --list-secret-keys --keyid-format LONG
 
           KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          if [ -z "$KEY_ID" ]; then
+            echo "ERROR: Could not extract key ID!"
+            exit 1
+          fi
           echo "Using key: $KEY_ID"
+
+          # 测试密钥是否可用
+          echo "Testing key usability..."
+          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --local-user "$KEY_ID" >/dev/null 2>&1 || {
+            echo "ERROR: GPG key is not usable (wrong passphrase or key revoked?)"
+            exit 1
+          }
 
           # 更新 reprepro 配置以使用签名
           echo "SignWith: $KEY_ID" >> repo/conf/distributions
+          cat repo/conf/distributions
 
           # 预载密码到 gpg-agent
           gpgconf --kill gpg-agent 2>/dev/null || true
@@ -194,19 +234,20 @@ jobs:
 
           # 使用 gpg-preset-passphrase 预载密码（如果可用）
           command -v gpg-preset-passphrase 2>/dev/null && \
+            /usr/lib/gnupg2/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || \
             /usr/lib/gnupg/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || \
             echo "gpg-preset-passphrase not available, trying alternative..."
 
-          # 替代方案：通过一次签名操作让 gpg-agent 缓存密码
-          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --local-user "$KEY_ID" 2>/dev/null >/dev/null || true
-
           # 导出 Release 文件（触发签名）
           echo "Exporting with signature..."
-          reprepro -b repo --ask-passphrase export
+          reprepro -b repo --ask-passphrase export || {
+            echo "ERROR: reprepro export failed!"
+            exit 1
+          }
 
           # 验证签名
           echo "Verifying signature..."
-          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null || echo "Signature verification skipped"
+          gpg --verify repo/dists/trixie/Release.gpg repo/dists/trixie/Release 2>/dev/null && echo "✓ Signature verified"
 
           # 导出公钥
           gpg --armor --export "$KEY_ID" > repo/cix-deb-repo.asc
