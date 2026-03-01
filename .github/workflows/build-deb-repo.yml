@@ -217,16 +217,21 @@ jobs:
           cat > repo/README.md <<'EOF'
           # Cix APT Repository
 
-          ## Setup
+          ## Setup (with signature verification)
 
-          ### Without verification (current mode):
+          ### Import GPG key:
           ```bash
-          echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
-          sudo apt update
+          wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+          ```
+
+          ### Add repository:
+          ```bash
+          echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
           ```
 
           ### Install packages:
           ```bash
+          sudo apt update
           sudo apt install <package-name>
           ```
           EOF
@@ -285,21 +290,29 @@ jobs:
               pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; }
               a { color: #0366d6; text-decoration: none; }
               a:hover { text-decoration: underline; }
+              .verified { color: #22863a; font-weight: bold; }
             </style>
           </head>
           <body>
             <h1>Cix APT Repository</h1>
             <p>Debian Trixie ARM64 package repository hosted on GitHub Pages.</p>
+            <p><span class="verified">✓ Signed Repository</span> - Packages are cryptographically signed.</p>
             <h2>Quick Setup</h2>
-            <pre>echo "deb [trusted=yes] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
-          sudo apt update</pre>
-            <h2>Install Packages</h2>
-            <pre>sudo apt install package-name</pre>
+            <pre># Import GPG key
+wget -qO- https://claystan404.github.io/cix-deb-repo/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
+
+# Add repository
+echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://claystan404.github.io/cix-deb-repo trixie main" | sudo tee /etc/apt/sources.list.d/cix.list
+
+# Update and install
+sudo apt update
+sudo apt install package-name</pre>
             <p><strong>Architecture:</strong> ARM64 only</p>
             <h2>Available Packages</h2>
             <ul>
               <li><a href="dists/">dists/</a> - Package indices</li>
               <li><a href="pool/">pool/</a> - Package files</li>
+              <li><a href="repository-key.asc">repository-key.asc</a> - GPG public key</li>
             </ul>
             <p><a href="README.md">View README</a></p>
           </body>
