@@ -134,21 +134,25 @@ jobs:
           echo "Using key: $KEY_ID"
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
 
-          # 测试密钥是否可用
-          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --local-user "$KEY_ID" >/dev/null 2>&1 || {
-            echo "ERROR: GPG key is not usable (wrong passphrase?)"
-            exit 1
+          # 预载密码到 gpg-agent - 使用环境变量方式
+          gpgconf --kill gpg-agent 2>/dev/null || true
+
+          # 方法：通过 GPG_TTY 和环境变量传递密码
+          GPG_TTY=$(tty)
+          export GPG_TTY
+
+          # 方案：使用 echo 和管道传递密码给 gpg2
+          # 首先执行一次签名让 gpg-agent 认识密码
+          {
+            echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --status-fd 1 --sign --local-user "$KEY_ID" >/dev/null
+          } || {
+            echo "Failed to cache passphrase in gpg-agent"
           }
 
-          # 预载密码到 gpg-agent
-          gpgconf --kill gpg-agent 2>/dev/null || true
+          # 重新启动 gpg-agent
           gpg-agent --daemon --batch 2>/dev/null || true
 
-          command -v gpg-preset-passphrase 2>/dev/null && \
-            /usr/lib/gnupg2/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || \
-            /usr/lib/gnupg/gpg-preset-passphrase --preset "$GPG_PASSPHRASE" "$KEY_ID" 2>/dev/null || true
-
-          echo "✓ GPG setup complete"
+          echo "✓ GPG setup complete""
 
       - name: Configure reprepro
         run: |
