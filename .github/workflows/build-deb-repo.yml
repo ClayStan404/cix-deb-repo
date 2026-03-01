@@ -95,10 +95,10 @@ jobs:
           path: debs
           merge-multiple: true
 
-      - name: Install reprepro
+      - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y reprepro
+          sudo apt-get install -y reprepro gnupg
 
       - name: Setup GPG key
         env:
@@ -106,16 +106,28 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           if [ -n "$GPG_PRIVATE_KEY" ]; then
-            echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-            echo "$GPG_PASSPHRASE" > passphrase.txt
-            chmod 600 passphrase.txt
+            # 配置 GPG 使用 loopback 模式（避免 pinentry 问题）
+            mkdir -p ~/.gnupg
+            chmod 700 ~/.gnupg
+            cat > ~/.gnupg/gpg-agent.conf << 'EOF'
+            allow-loopback-pinentry
+            pinentry-mode loopback
+            EOF
+
+            # 导入私钥
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+
             # 获取密钥 ID
             KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep -E 'sec|ssb' | head -1 | awk '{print $2}' | cut -d'/' -f2)
             echo "KEY_ID=$KEY_ID" >> $GITHUB_ENV
+            echo "HAS_GPG=true" >> $GITHUB_ENV
             echo "Using GPG key: $KEY_ID"
+
+            # 配置 gpg-agent
+            gpg-agent --daemon 2>/dev/null || true
           else
-            echo "No GPG key found, creating throwaway key for testing"
-            # 创建临时密钥用于测试（不推荐用于生产）
+            echo "HAS_GPG=false" >> $GITHUB_ENV
+            echo "No GPG key found, creating unsigned repository"
           fi
 
       - name: Configure reprepro
@@ -131,31 +143,41 @@ jobs:
           Architectures: amd64 arm64 source
           Components: main
           Description: APT repository for Cix packages
-          SignWith: yes
           EOF
 
-          # 如果有 GPG 密钥 ID，更新配置
-          if [ -n "$KEY_ID" ]; then
-            sed -i "s/SignWith: yes/SignWith: $KEY_ID/" repo/conf/distributions
+          # 如果有 GPG 密钥，添加签名配置
+          if [ "$HAS_GPG" = "true" ]; then
+            echo "SignWith: $KEY_ID" >> repo/conf/distributions
+          else
+            echo "SignWith: no" >> repo/conf/distributions
           fi
+
+          echo "=== Reprepro configuration ==="
+          cat repo/conf/distributions
 
       - name: Add packages to repository
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          # 配置 GPG 用于 reprepro
-          if [ -n "$GPG_PASSPHRASE" ]; then
-            echo "使用 GPG_AGENT 签名"
+          # 配置 GPG 环境变量
+          if [ "$HAS_GPG" = "true" ]; then
             export GPG_TTY=$(tty)
+            echo "GPG_TTY=$GPG_TTY"
           fi
 
           # 添加所有 .deb 文件到仓库
           for deb in debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "Adding $deb to repository"
-              if [ -n "$GPG_PASSPHRASE" ]; then
-                reprepro -b repo --ask-passphrase includedeb debian13 "$deb"
+              if [ "$HAS_GPG" = "true" ]; then
+                # 使用环境变量传递密码
+                reprepro -b repo --nothingworkserror includedeb debian13 "$deb" || {
+                  echo "Retrying with explicit GPG configuration..."
+                   reprepro -b repo includedeb debian13 "$deb"
+                }
               else
+                # 不签名模式
+                reprepro -b repo --ask-passphrase includedeb debian13 "$deb" || \
                 reprepro -b repo includedeb debian13 "$deb"
               fi
             fi
@@ -163,8 +185,9 @@ jobs:
 
       - name: Export GPG public key
         run: |
-          if [ -n "$KEY_ID" ]; then
+          if [ "$HAS_GPG" = "true" ] && [ -n "$KEY_ID" ]; then
             gpg --armor --export "$KEY_ID" > repo/repository-key.asc
+            echo "GPG public key exported"
           fi
 
       - name: Create APT repo info page
@@ -174,17 +197,26 @@ jobs:
 
           ## 添加仓库到你的系统
 
-          首先，导入 GPG 密钥：
+          ### 方法 1: 使用 GPG 签名验证（推荐）
+
+          导入 GPG 密钥：
           ```bash
           wget -qO- https://<username>.github.io/<repo>/repository-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/cix-archive-keyring.gpg
           ```
 
-          然后添加仓库源：
+          添加仓库源：
           ```bash
           echo "deb [signed-by=/usr/share/keyrings/cix-archive-keyring.gpg] https://<username>.github.io/<repo> debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
           ```
 
-          更新包列表并安装：
+          ### 方法 2: 不验证签名（仅用于测试）
+
+          ```bash
+          echo "deb [trusted=yes] https://<username>.github.io/<repo> debian13 main" | sudo tee /etc/apt/sources.list.d/cix.list
+          ```
+
+          ### 安装包
+
           ```bash
           sudo apt update
           sudo apt install <package-name>
