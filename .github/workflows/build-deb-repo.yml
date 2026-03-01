@@ -172,6 +172,63 @@ jobs:
           ```
           EOF
 
+      - name: Create directory indexes
+        run: |
+          # 为每个目录创建 index.html 以启用目录浏览
+          cd repo
+
+          # 生成目录索引的函数
+          generate_index() {
+            local dir="$1"
+            local title="$2"
+            mkdir -p "$dir"
+            {
+              echo "<!DOCTYPE html>"
+              echo "<html><head><title>$title</title>"
+              echo "<style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px}"
+              echo "a{color:#0366d6;text-decoration:none}"
+              echo "a:hover{text-decoration:underline}"
+              echo "table{width:100%;border-collapse:collapse}"
+              echo "th,tr:nth-child(even){background:#f6f8fa}"
+              echo "th,td{padding:8px;text-align:left}"
+              echo "</style></head><body>"
+              echo "<h1>$title</h1>"
+              echo "<table><tr><th>Name</th><th>Last modified</th><th>Size</th></tr>"
+              echo "<tr><td><a href=\"../\">../</a></td><td>-</td><td>-</td></tr>"
+
+              # 列出文件和目录
+              for item in "$dir"/*; do
+                [ -e "$item" ] || continue
+                name=$(basename "$item")
+                if [ -d "$item" ]; then
+                  size="-"
+                  mod=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
+                  echo "<tr><td><a href=\"$name/\">$name/</a></td><td>$mod</td><td>$size</td></tr>"
+                elif [ -f "$item" ]; then
+                  size=$(stat -c "%s" "$item" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "-")
+                  mod=$(stat -c "%y" "$item" 2>/dev/null | cut -d'.' -f1 || echo "-")
+                  echo "<tr><td><a href=\"$name\">$name</a></td><td>$mod</td><td>$size</td></tr>"
+                fi
+              done
+              echo "</table></body></html>"
+            } > "$dir/index.html"
+          }
+
+          # 为主要目录生成索引
+          generate_index "pool" "Pool - Package Files"
+          find pool -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
+
+          generate_index "pool/main" "Pool - Main"
+          find pool/main -type d -exec sh -c 'generate_index "$1" "Index: $1"' _ {} \;
+
+          generate_index "dists" "Distributions"
+          generate_index "dists/debian13" "Distribution: debian13"
+          generate_index "dists/debian13/main" "Component: main"
+          generate_index "dists/debian13/main/binary-amd64" "Binary AMD64"
+
+          echo "Generated index files:"
+          find repo -name "index.html" | head -20
+
       - name: Create index.html
         run: |
           cat > repo/index.html <<'HTMLDOC'
